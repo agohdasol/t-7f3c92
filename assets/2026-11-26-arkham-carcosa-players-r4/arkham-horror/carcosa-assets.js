@@ -1,0 +1,56 @@
+(function(root){'use strict';
+const A=root.Arkham,X=A.CampaignEngine,{H,D,queue,choice,opt,code,card,name}=A;
+const textBlank=A.assetTextBlank;A.assetTextBlank=(s,u)=>!!textBlank?.(s,u)||!!s.cards[u]&&A.isBlank(s,u);
+const COMPOSURES={'03107':['combat','agility'],'03109':['intellect','combat'],'03111':['willpower','agility'],'03113':['spell'],'03115':['willpower','intellect']};
+const READY=['03024','03025','03032',...Object.keys(COMPOSURES),'03112','03151','03154','03192','03193','03198','03266','03268','03271'];
+const active=(s,pi,u)=>s.players[pi].assets.includes(u)&&!A.assetTextBlank?.(s,u)&&A.canTrigger?.(s,pi,u)!==false;
+const phase=s=>A.phaseKey?.(s)||s.round+':'+s.phase+':'+(s.phaseSerial||0),turn=s=>s.round+':'+s.turns;
+const inTurn=s=>{const c=s.playerWindowContext||{phase:s.phase,turnDone:s.players[s.current]?.turnDone};return s.turnInProgress!==false&&c.phase==='investigation'&&!c.turnDone;};
+const spellTest=(s,t)=>!!t?.source&&A.isTrait(s,t.source,'Spell');
+const chargeable=d=>!(/Uses\s*\(/i.test(d.enText||'')&&!/Uses\s*\(\d+\s+charges?\)/i.test(d.enText||''));
+Object.assign(A.uses,{'03032':3,'03192':3,'03193':3,'03266':3,'03268':3});
+const canPlay=A.canPlay;A.canPlay=(s,pi,u)=>canPlay(s,pi,u)&&(!COMPOSURES[code(s,u)]||!s.players[pi].assets.some(v=>A.isTrait(s,v,'Composure')));
+const stat=A.modifyStat;A.modifyStat=(s,pi,skill,context,n)=>{n=stat?stat(s,pi,skill,context,n):n;for(const u of s.players[pi].assets){if(A.assetTextBlank?.(s,u))continue;const id=code(s,u);if(id==='03112'&&s.cards[u].doom>0&&skill==='willpower')n++;if(id==='03151'&&s.players[pi].resources>=10&&['willpower','intellect'].includes(skill))n++;}return n;};
+const shroud=A.modifyShroud;A.modifyShroud=(s,l,n)=>{n=shroud?shroud(s,l,n):n;return Math.max(0,n-2*(s.ptcArcaneInsight||[]).filter(x=>x.location===l&&x.turn===turn(s)&&inTurn(s)).length);};
+const value=A.modifyTestValue;A.modifyTestValue=(s,t,n)=>{n=value?value(s,t,n):n;return n+(t.ptcSuggestion?A.stat(s,t.pi,'willpower'):0);};
+const main=A.mainActions;A.mainActions=(s,fx=false)=>{
+ let out=main(s,fx);if(s.pending||s.result||s.phase!=='investigation')return out;
+ const pi=s.current,p=s.players[pi],t=s.test||s.windowTest,local=s.enemies.filter(u=>s.cards[u].location===p.location),add=c=>X.action(s,out,fx,{pi,...c});
+ out=out.filter(a=>!(READY.includes(a.card)&&a.type==='play'));
+ for(const u of p.hand){const id=code(s,u);if(READY.includes(id)&&A.canPlay(s,pi,u)&&(!COMPOSURES[id]||!s.playerWindowContext||s.playerWindowContext.phase==='investigation'&&s.playerWindowContext.current===pi&&!s.playerWindowContext.turnDone))add({id:'ptcAssetPlay:'+u,label:name(s,u)+' 플레이',card:id,type:'play',actions:COMPOSURES[id]?0:1,resources:A.cardCost(s,pi,u),effects:[{kind:'playAsset',pi,u}]});}
+ for(const u of p.assets){if(!active(s,pi,u))continue;const id=code(s,u),c=s.cards[u],common={source:u,card:id};
+  if(COMPOSURES[id]&&t?.pi===pi&&(COMPOSURES[id].includes(t.skill)||id==='03113'&&spellTest(s,t)))add({...common,id:'ptcComposure:'+u,label:name(s,u)+' · 자원 1 / 이번 능력값 +1',actions:0,resources:1,effects:[{kind:'ptcEquipmentBonus',pi,n:1}]});
+  if(id==='03025')for(const target of p.hand.filter(v=>(card(s,v).skill_intellect||0)+(card(s,v).skill_wild||0)>0))add({...common,id:'ptcGlyphResearch:'+u+':'+target,label:name(s,u)+' · '+name(s,target)+' 버리기 / 비밀 '+(c.uses+1)+'/3',tome:true,costEffects:[{kind:'discard',u:target}],effects:[{kind:'addUse',u,n:1}]});
+  if(id==='03032'&&c.ready&&c.uses)add({...common,id:'ptcTransmutation:'+u,label:name(s,u)+' · 의지(1) / 성공 차이만큼 자원, 최대 3',exhaust:true,uses:1,effects:[{kind:'startTest',pi,source:u,skill:'willpower',difficulty:1,testKind:'ptc:transmutation'}]});
+  if(id==='03112'&&c.ready)for(const doom of [0,1])if(c.doom+doom>0)add({...common,id:'ptcRenfield:'+u+':'+doom,label:name(s,u)+(doom?' · 파멸 1 추가':' · 파멸 추가 안 함')+' / 자원 '+(c.doom+doom),actions:0,exhaust:true,effects:[{kind:'ptcRenfield',pi,u,doom}]});
+  if(id==='03151'&&c.ready&&!local.length)add({...common,id:'ptcDario:'+u,label:name(s,u)+' · 소진 / 자원 2',exhaust:true,effects:[{kind:'gainResource',pi,n:2}]});
+  if(id==='03154'&&c.ready)for(const target of p.assets.filter(v=>A.isTrait(s,v,'Spell')&&chargeable(card(s,v))))add({...common,id:'ptcBookCharge:'+u+':'+target,label:name(s,u)+' · 자원 1 / '+name(s,target)+' 충전 +1',resources:1,exhaust:true,tome:true,effects:[{kind:'addUse',u:target,n:1}]});
+  if(['03192','03193'].includes(id)&&c.uses&&!A.clueBlocked(s,pi)&&!(s.locations[p.location].attachments||[]).some(v=>code(s,v)==='01174'))add({...common,id:'ptcGlyphInvestigate:'+u,label:name(s,u)+' · '+(id==='03192'?'성공 차이 2마다 추가 단서':'성공 시 교전 중인 적 자동 회피'),type:'investigate',uses:1,noAoO:id==='03193',effects:[{kind:'startTest',pi,source:u,skill:'intellect',difficulty:A.shroud(s,p.location),testKind:'investigate',location:p.location,ptcGlyph:id}]});
+  if(id==='03198'&&c.ready){if(!p.hand.length)add({...common,id:'ptcLabrancheCard:'+u,label:name(s,u)+' · 손패 없음 / 카드 1장 뽑기',actions:0,exhaust:true,effects:[{kind:'draw',pi}]});if(!p.resources)add({...common,id:'ptcLabrancheResource:'+u,label:name(s,u)+' · 자원 없음 / 자원 1',actions:0,exhaust:true,effects:[{kind:'gainResource',pi,n:1}]});}
+  if(id==='03266'&&c.uses&&c.ptcInsightTurn!==turn(s)&&(s.playerWindowContext?s.playerWindowContext.phase==='investigation'&&!s.playerWindowContext.turnDone:!p.turnDone))add({...common,id:'ptcArcaneInsight:'+u,label:name(s,u)+' · 충전 1 / '+name(s,p.location)+' 이번 차례 장막값 −2',actions:0,uses:1,effects:[{kind:'ptcArcaneInsight',pi,u,location:p.location}]});
+  if(id==='03268'&&c.ready)for(const target of A.activeEnemies(s,pi))add({...common,id:'ptcSuggestion:'+u+':'+target,label:name(s,u)+' · '+name(s,target)+' 회피 / 의지값 추가',type:'evade',exhaust:true,target,effects:[{kind:'startTest',pi,source:u,target,skill:'agility',difficulty:A.enemyStat(s,target,'evade'),testKind:'evade',ptcSuggestion:true}]});
+  if(id==='03271'&&c.ready&&p.deck.length)add({...common,id:'ptcInitiate:'+u,label:name(s,u)+' · 소진 / 덱 위 3장에서 마법 뽑기',actions:0,exhaust:true,effects:[{kind:'ptcInitiateSearch',pi}]});
+ }
+ return out;
+};
+H.ptcRenfield=(s,e)=>{s.cards[e.u].doom+=e.doom;queue(s,{kind:'gainResource',pi:e.pi,n:s.cards[e.u].doom});};
+H.ptcArcaneInsight=(s,e)=>{s.cards[e.u].ptcInsightTurn=turn(s);s.ptcArcaneInsight=(s.ptcArcaneInsight||[]).filter(x=>x.turn===turn(s));s.ptcArcaneInsight.push({location:e.location,turn:turn(s)});};
+H.ptcInitiateSearch=(s,e)=>{const top=s.players[e.pi].deck.slice(-3).filter(u=>A.isTrait(s,u,'Spell'));choice(s,e.pi,'비술 입문자 · 덱 위 3장에서 마법 뽑기',[...top.map(u=>opt(name(s,u),[{kind:'ptcSearchDraw',pi:e.pi,u},{kind:'shuffleDeck',pi:e.pi}],code(s,u))),opt('찾지 않고 섞기',{kind:'shuffleDeck',pi:e.pi})]);};
+const entry=A.cardMoved;A.cardMoved=(s,u,from,owner,to)=>{entry?.(s,u,from,owner,to);if(to==='assets'&&from!=='assets'&&code(s,u)==='03271'&&!A.assetTextBlank?.(s,u))queue(s,{kind:'ptcInitiateEntry',pi:s.cards[u].owner,u});};
+H.ptcInitiateEntry=(s,e)=>{if(!s.players[e.pi].assets.includes(e.u))return;choice(s,e.pi,'비술 입문자 · 강제 진입 효과',[opt('파멸 1개 올려놓기',{kind:'ptcInitiateDoom',u:e.u},'03271'),opt('공포 2 올려놓기',{kind:'assetDamage',u:e.u,damage:0,horror:2},'03271')]);};
+H.ptcInitiateDoom=(s,e)=>{s.cards[e.u].doom++;};
+const uses=H.addUse;H.addUse=(s,e)=>{uses(s,e);if(code(s,e.u)==='03025'&&s.cards[e.u].uses>=3&&!A.assetTextBlank?.(s,e.u))queue(s,{kind:'ptcTranslateGlyphs',u:e.u,pi:s.cards[e.u].owner});};
+H.ptcTranslateGlyphs=(s,e)=>{if(!s.players[e.pi]?.assets.includes(e.u)||s.cards[e.u].uses<3)return;A.discard(s,e.u);const p=s.players[e.pi];s.campaign.investigatorNotes||={};s.campaign.investigatorNotes[p.investigator]||={};s.campaign.investigatorNotes[p.investigator].glyphsTranslated=true;A.log(s,p.name+' · 당신은 상형문자를 해석했다','campaign',e.pi);queue(s,{kind:'gainResource',pi:e.pi,n:5});};
+const move=H.moveTo;H.moveTo=(s,e)=>{const before=s.players[e.pi].location,n=s.queue.length;move(s,e);if(before!==s.players[e.pi].location&&s.players[e.pi].location===e.location&&s.locations[e.location].clues)X.append(s,n,[{kind:'ptcFieldworkWindow',pi:e.pi,location:e.location,checked:[]}]);};
+H.ptcFieldworkWindow=(s,e)=>{const ids=s.players[e.pi].assets.filter(u=>code(s,u)==='03024'&&s.cards[u].ready&&active(s,e.pi,u)&&!e.checked.includes(u));if(!ids.length||s.players[e.pi].out||!s.locations[e.location]?.clues)return;const u=ids[0],next={...e,checked:[...e.checked,u]};choice(s,e.pi,'현장 조사 · 단서가 있는 장소로 이동',[opt('소진 · 이번 단계의 다음 테스트 능력값 +2',[{kind:'ptcFieldwork',pi:e.pi,u},next],'03024'),opt('사용하지 않기',next)],'이번 단계에 수행하는 자신의 다음 능력 테스트에만 적용합니다.','reaction');};
+H.ptcFieldwork=(s,e)=>{if(!active(s,e.pi,e.u)||!s.cards[e.u].ready)return;s.cards[e.u].ready=false;const p=s.players[e.pi],key=phase(s);p.flags.ptcFieldwork={phase:key,n:(p.flags.ptcFieldwork?.phase===key?p.flags.ptcFieldwork.n:0)+2};};
+const start=H.startTest;H.startTest=(s,e)=>{const p=s.players[e.pi],b=p.flags.ptcFieldwork;start(s,e);if(s.test?.pi===e.pi){if(b?.phase===phase(s))s.test.bonus+=b.n;delete p.flags.ptcFieldwork;}};
+const purpose=H.testPurpose;H.testPurpose=(s,e)=>purpose(s,e.t.ptcGlyph==='03192'&&e.t.success?{...e,t:{...e.t,clues:(e.t.clues??1)+Math.floor(Math.max(0,e.t.margin)/2)}}:e);
+const success=A.successEffects;A.successEffects=(s,t)=>{const out=success?.(s,t)||[];if(!t.success)return out;if(t.testKind==='ptc:transmutation')out.push({kind:'gainResource',pi:t.pi,n:Math.min(3,Math.max(0,t.margin)),cardCode:'03032',label:'연금술 변환 · 자원 획득'});if(t.ptcGlyph==='03193')out.push({kind:'ptcGlyphEvade',pi:t.pi,cardCode:'03193',label:'고대 상형문자판 · 자동 회피'});return out;};
+H.ptcGlyphEvade=(s,e)=>{const ids=s.enemies.filter(u=>s.cards[u].engaged===e.pi||A.isMassive(s,u)&&s.cards[u].ready&&s.cards[u].location===s.players[e.pi].location);if(ids.length)choice(s,e.pi,'고대 상형문자판 · 자동으로 회피할 적',[...ids.map(u=>opt(name(s,u),{kind:'evadeEnemy',pi:e.pi,u},code(s,u))),opt('회피하지 않기',[])]);};
+const after=H.testAfter;H.testAfter=(s,e)=>{const n=s.queue.length;after(s,e);if(e.t.testKind==='ptc:transmutation'&&e.t.tokens.some(x=>!x.ignored&&['skull','cultist','tablet','elder_thing','auto_fail'].includes(x.token)))X.append(s,n,[{kind:'damage',pi:e.t.pi,damage:1,horror:0,source:e.t.source}]);if(e.t.ptcSuggestion&&(!e.t.success||e.t.margin<2)&&s.cards[e.t.source]?.uses>0)s.cards[e.t.source].uses--;};
+const assign=H.assignDamage;H.assignDamage=(s,e)=>{assign(s,e);if(e.remainingDamage>0||e.remainingHorror<=0||e.direct||s.pending?.kind!=='damage')return;const required=s.players[e.pi].assets.some(u=>COMPOSURES[code(s,u)]&&!A.assetTextBlank?.(s,u)&&s.cards[u].horror<(card(s,u).sanity||0));if(required)s.pending.options=s.pending.options.filter(o=>!o.effects.some(x=>x.kind==='assignPoint'&&x.target==='player'));};
+const attack=H.enemyAttack;H.enemyAttack=(s,e)=>{if(!e.ptcSuggestionChecked&&!A.isElite(s,e.u)&&!s.players[e.pi].out){const ids=s.players[e.pi].assets.filter(u=>code(s,u)==='03268'&&s.cards[u].uses>0&&active(s,e.pi,u));if(ids.length){choice(s,e.pi,'주의 돌리기 · 정예가 아닌 적의 공격 취소',[...ids.map(u=>opt('충전 1회 소비 · 공격 취소',{kind:'addUse',u,n:-1},'03268')),opt('공격 해결',{...e,ptcSuggestionChecked:true})],'소진 상태여도 사용할 수 있습니다.','reaction');return;}}attack(s,e);};
+A.playerWindowCards=[...(A.playerWindowCards||[]),...Object.keys(COMPOSURES),'03112','03198','03266','03271'];
+A.Content.register({cards:READY});
+})(typeof window==='undefined'?globalThis:window);

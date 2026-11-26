@@ -1,0 +1,17 @@
+/* One bounded snapshot per unresolved action; snapshots never contain snapshots. */
+(function(root){'use strict';
+const A=root.Arkham,{H,queue,choice,opt,code}=A;
+const flat=fx=>(fx||[]).flatMap(e=>[e,...flat(e.steps||e.fx)]);
+function ownTurn(s,pi){const outer=s.actionInterrupts?.[0];return s.phase==='investigation'&&(outer?outer.current===pi&&!outer.turnDone:s.current===pi&&!s.players[pi].turnDone);}
+function capture(s,effects){const pay=flat(effects).find(e=>e.kind==='payAction'&&(e.n>0||e.tome&&s.players[e.pi].investigator==='01002'&&!s.players[e.pi].flags.turn.daisy));if(!pay||!ownTurn(s,pay.pi))return;const before=A.copy(s),parents=Object.keys(s.ptcActionFrames||{});delete before.ptcActionFrames;delete before.ptcReactionPreview;const id=s.ptcActionSerial=(s.ptcActionSerial||0)+1;s.ptcActionFrames||={};s.ptcActionFrames[id]={before,pi:pay.pi,parents};queue(s,{kind:'ptcAfterAction',id});}
+const before=A.beforeAction;A.beforeAction=(s,a)=>{capture(s,a.effects);before?.(s,a);};
+const choose=A.beforeChoose;A.beforeChoose=(s,o)=>{if(!o.effects.some(e=>/^ptcRoss/.test(e.kind)))capture(s,o.effects);choose?.(s,o);};
+H.ptcAfterAction=(s,e)=>{const f=s.ptcActionFrames?.[e.id];if(!f)return;if(s.result||!ownTurn(s,f.pi)||s.players[f.pi].out){delete s.ptcActionFrames[e.id];return;}queue(s,...s.players.filter(p=>!p.out&&p.location===s.players[f.pi].location).map(p=>({kind:'ptcTimeWarpWindow',id:e.id,pi:p.id})),{kind:'ptcForgetAction',id:e.id});};
+H.ptcForgetAction=(s,e)=>{if(s.ptcActionFrames)delete s.ptcActionFrames[e.id];};
+H.ptcTimeWarpWindow=(s,e)=>{const f=s.ptcActionFrames?.[e.id],p=s.players[e.pi],u=A.findHand(s,e.pi,'03311');if(!f||!u||!A.canPlay(s,e.pi,u))return;const cost=A.cardCost(s,e.pi,u);if(p.resources<cost||(f.before.players[e.pi]?.resources||0)<cost)return;choice(s,e.pi,'시간 왜곡 · 방금 완료한 행동 되돌리기',[opt('시간 왜곡 · 자원 '+cost+' / 행동 전 상태로 되돌리기',{kind:'ptcTimeWarpUse',pi:e.pi,u,id:e.id},'03311'),opt('행동 결과 유지',[])],'행동·탄약·이동·카드·테스트 결과를 되돌립니다. 시간 왜곡과 그 비용은 그대로 처리합니다.','reaction');};
+H.ptcTimeWarpUse=(s,e)=>{const f=s.ptcActionFrames?.[e.id];if(!f)return;const pi=e.pi,cost=A.cardCost(s,pi,e.u),p=s.players[pi],lolaBefore=p.flags.lolaDiscount||0;if(p.resources<cost||f.before.players[pi].resources<cost)return;A.fastPay(s,pi,e.u);const played=A.copy(s.cards[e.u]),destination=played.zone,owner=played.owner,discountSpent=lolaBefore-(p.flags.lolaDiscount||0),rng=s.rng,uid=s.uid,actionSerial=s.ptcActionSerial,parents=Object.fromEntries(f.parents.filter(id=>s.ptcActionFrames[id]).map(id=>[id,s.ptcActionFrames[id]])),restored=A.copy(f.before);for(const key of Object.keys(s))delete s[key];Object.assign(s,restored);s.rng=rng;s.uid=Math.max(s.uid||0,uid||0);s.ptcActionSerial=actionSerial;s.ptcActionFrames=parents;s.players[pi].resources-=cost;if(discountSpent)s.players[pi].flags.lolaDiscount=Math.max(0,(s.players[pi].flags.lolaDiscount||0)-discountSpent);s.cards[e.u]=played;A.moveCard(s,e.u,destination,owner);if(s.cards[e.u].ptcPaintedOriginal)A.PaintedWorld.restore(s,e.u,true);A.log(s,'시간 왜곡 · 방금 행동을 되돌리고 자원 '+cost+' 지불','card',pi);};
+const finish=H.finish;H.finish=(s,e)=>{finish(s,e);if(s.result)delete s.ptcActionFrames;};
+const scenarioFinish=A.beforeScenarioFinish;A.beforeScenarioFinish=s=>{scenarioFinish?.(s);delete s.ptcActionFrames;};
+const main=A.mainActions;A.mainActions=(s,fx=false)=>main(s,fx).filter(a=>a.card!=='03311');
+A.Content.register({cards:['03311']});
+})(typeof window==='undefined'?globalThis:window);

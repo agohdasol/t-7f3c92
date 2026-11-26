@@ -1,0 +1,7 @@
+(function(root){'use strict';
+const A=root.Arkham,{H,queue,choice,opt,code,card}=A;
+const point=H.assignPoint;H.assignPoint=(s,e)=>{if(e.which!=='damage'||e.target==='player'||code(s,e.target)!=='03305')return point(s,e);const c=s.cards[e.target],counts={...(e.ptcArmorCounts||{}),[e.target]:(e.ptcArmorCounts?.[e.target]||0)+1},caps={...(e.ptcArmorCaps||{}),[e.target]:e.ptcArmorCaps?.[e.target]??card(s,e.target).health-c.damage},next={...e,ptcArmorCounts:counts,ptcArmorCaps:caps};if(!e.ptcArmorChecked&&c.ready&&!A.assetTextBlank?.(s,e.target)&&A.canTrigger?.(s,c.owner,e.target)!==false){choice(s,c.owner,'아르덴의 갑주 · 할당된 피해 취소',[opt('소진 · 피해 1 취소',{...next,kind:'ptcArmorCancel'},'03305'),opt('피해를 그대로 적용',{...e,kind:'assignPoint',ptcArmorChecked:true})],'피해를 취소해도 이번 할당에서 추가로 갑주에 할당할 수 있는 양은 늘어나지 않습니다.','reaction');return;}delete next.ptcArmorChecked;point(s,next);};
+H.ptcArmorCancel=(s,e)=>{s.cards[e.target].ready=false;queue(s,{...e,kind:'assignDamage',remainingDamage:e.remainingDamage-1});};
+const assign=H.assignDamage;H.assignDamage=(s,e)=>{assign(s,e);if(e.remainingDamage<=0||s.pending?.kind!=='damage')return;s.pending.options=s.pending.options.filter(o=>!o.effects.some(x=>x.kind==='assignPoint'&&e.ptcArmorCaps?.[x.target]!==undefined&&e.ptcArmorCounts[x.target]>=e.ptcArmorCaps[x.target]));};
+A.Content.register({cards:['03305']});
+})(typeof window==='undefined'?globalThis:window);

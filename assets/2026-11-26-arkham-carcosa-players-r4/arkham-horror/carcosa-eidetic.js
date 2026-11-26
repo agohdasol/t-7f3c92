@@ -1,0 +1,9 @@
+(function(root){'use strict';
+const A=root.Arkham,P=A.PaintedWorld,{H,code,card}=A;
+A.eideticTargets=(s,pi)=>s.players.flatMap(p=>p.discard).filter(u=>card(s,u).type_code==='event'&&A.isTrait(s,u,'Insight')&&A.Content.status.cards.has(root.ArkhamDeck.canonical(code(s,u)))&&A.canMoveCard?.(s,u,'discard',s.cards[u].owner,'removed',s.cards[u].owner)!==false);
+const onPlay=P.onPlay;P.onPlay=(s,u)=>{onPlay?.(s,u);const c=s.cards[u];if(c.ptcPaintedOriginal!=='03306'||c.ptcEideticRemoved)return;const target=c.ptcPaintedFrom;if(s.cards[target]?.zone==='discard')A.moveCard(s,target,'removed',s.cards[target].owner);c.ptcEideticRemoved=true;};
+H.ptcEideticBegin=(s,e)=>{if(code(s,e.u)!=='03306'||!s.players[e.pi].hand.includes(e.u)||!A.eideticTargets(s,e.pi).includes(e.target))return;P.begin(s,e.u,e.target,!!e.playing);};
+const restore=P.restore;P.restore=(s,u,force=false)=>{restore(s,u,force);if(!s.cards[u]?.ptcPaintedOriginal)delete s.cards[u].ptcEideticRemoved;};
+const main=A.mainActions;A.mainActions=(s,fx=false)=>{let out=main(s,fx).filter(a=>!(a.card==='03306'&&a.type==='play'));if(s.pending||s.result||s.phase!=='investigation'||s.ptcEideticPreview)return out;const pi=s.current,p=s.players[pi];for(const u of p.hand.filter(u=>code(s,u)==='03306'))for(const target of A.eideticTargets(s,pi)){const t=A.copy(s);t.ptcEideticPreview=true;P.begin(t,u,target,true);for(const a of main(t,true).filter(a=>P.flat(a.effects).some(e=>e.u===u||e.source===u)&&a.card===code(s,target)))out.push({...a,id:'ptcEidetic:'+u+':'+target+':'+a.id,label:'완전기억능력 · '+a.label,card:'03306',description:a.description+' · 원본과 사본 모두 제거',effects:fx?[{kind:'ptcEideticBegin',pi,u,target,playing:true},...a.effects,{kind:'ptcPaintedRestore',u}]:undefined});}return out;};
+A.Content.register({cards:['03306']});
+})(typeof window==='undefined'?globalThis:window);

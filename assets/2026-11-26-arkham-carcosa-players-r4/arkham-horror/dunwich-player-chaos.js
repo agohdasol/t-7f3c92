@@ -1,0 +1,29 @@
+(function(root){'use strict';const A=root.Arkham,X=A.CampaignEngine,{H,D,queue,choice,opt,code,card}=A;
+const canCommit=A.canCommit;A.canCommit=(s,t,pi,u)=>canCommit?.(s,t,pi,u)!==false&&!(code(s,u)==='02026'&&t.committed.some(x=>code(s,x.u)==='02026'))&&!(code(s,u)==='02271'&&t.pi!==pi);
+const commit=H.commitCard;H.commitCard=(s,e)=>{commit(s,e);if(code(s,e.u)==='02026'){s.test.doubleOriginalDifficulty=s.test.difficulty;s.test.difficulty*=2;}};
+function doubled(s,t){return t.success&&t.committed.some(x=>code(s,x.u)==='02026');}
+A.testSuccessRepeats=(s,t)=>doubled(s,t)?2:1;
+const purpose=H.testPurpose;H.testPurpose=(s,e)=>{const length=s.queue.length;purpose(s,e);if(doubled(s,e.t)&&!e.t.secondResolution)X.append(s,length,[{kind:'testPurpose',t:{...e.t,secondResolution:true}}]);};
+const after=H.testAfter;H.testAfter=(s,e)=>after(s,doubled(s,e.t)?{...e,t:{...e.t,committed:e.t.committed.flatMap(x=>[x,x])}}:e);
+A.tokenHasEffect=(s,t,token)=>!Object.entries(t?.defianceChoices||{}).some(([u,v])=>v===token&&t.committed.some(x=>x.u===u));
+const token=A.tokenOverride;A.tokenOverride=(s,t,x)=>A.tokenHasEffect(s,t,x)?token?.(s,t,x):0;
+const chaos=H.beforeChaos;H.beforeChaos=(s,e)=>{if(!s.test)return;const t=s.test,next=t.committed.find(x=>code(s,x.u)==='02190'&&!t.defianceChoices?.[x.u]);if(next){choice(s,next.pi,'저항 · 효과와 보정값을 무시할 기호',['skull','cultist','tablet','elder_thing'].map(token=>opt(A.tokenLabel(token),{kind:'dwlDefiance',u:next.u,token})));return;}chaos(s,e);};
+H.dwlDefiance=(s,e)=>{s.test.defianceChoices||={};s.test.defianceChoices[e.u]=e.token;queue(s,{kind:'beforeChaos'});};
+const reactions=H.tokenReactions;H.tokenReactions=(s,e)=>{const t=s.test;if(!t)return;if(!e.diceChecked&&e.item.token!=='auto_fail'){const p=s.players[t.pi],ids=p.assets.filter(u=>code(s,u)==='02230'&&!A.assetTextBlank?.(s,u));if(ids.length&&p.resources>=2){choice(s,t.pi,'행운의 주사위 · 이 토큰을 무시할까요?',[...ids.map(u=>opt('자원 2 · 다른 토큰 공개',{kind:'dwlDice',pi:t.pi,u,item:e.item},'02230')),opt('이 토큰으로 계속',{...e,kind:'tokenReactions',diceChecked:true})],'무시한 토큰의 효과는 적용하지 않습니다.','reaction');return;}}reactions(s,e);};
+H.dwlDice=(s,e)=>{s.players[e.pi].resources-=2;const t=s.test,left=s.bag.map((token,index)=>({token,index})).filter(x=>!t.drawnIndices.includes(x.index)),item=left.length?left[Math.floor(A.random(s)*left.length)]:{token:'auto_fail',index:-1};t.drawnIndices.push(item.index);if(item.token==='auto_fail')A.moveCard(s,e.u,'removed',null);queue(s,{kind:'tokenReactions',item});};
+const math=H.testMath;H.testMath=(s,e)=>{const t=s.test;if(t&&!t.strokeChecked){const ids=t.committed.filter(x=>x.pi===t.pi&&code(s,x.u)==='02271'&&s.cards[x.u].zone==='aside');t.strokeChecked=true;if(ids.length&&!t.tokens.some(x=>x.token==='auto_fail'||x.value===-99)){A.optional(s,t.pi,'의외의 행운 · 추방하여 자동 성공',[...ids.map(x=>opt('의외의 행운 추방',[{kind:'dwlExile',u:x.u},{kind:'dwlAutoSuccess'}],'02271'))]);s.pending.options.at(-1).effects=[{kind:'testMath'}];return;}}math(s,e);};
+H.dwlAutoSuccess=(s)=>{s.test.forceSuccess=true;queue(s,{kind:'testMath'});};
+// Chaos draws outside skill tests also allow the printed replacement abilities.
+H.dwlOutsideToken=(s,e)=>{const held=e.held||[],left=s.bag.map((token,index)=>({token,index})).filter(x=>!held.includes(x.index)),item=left.length?left[Math.floor(A.random(s)*left.length)]:{token:'auto_fail',index:-1};if(e.dice&&item.token==='auto_fail')A.moveCard(s,e.dice,'removed',null);queue(s,{...e,kind:'dwlOutsideTokenChoice',item,held:[...held,item.index]});};
+H.dwlOutsideTokenChoice=(s,e)=>{const p=s.players[e.pi],opts=[];if(e.item.token!=='auto_fail'&&p.resources>=2)for(const u of p.assets.filter(u=>code(s,u)==='02230'&&!A.assetTextBlank?.(s,u)))opts.push(opt('행운의 주사위 · 자원 2 / 다른 토큰',{kind:'dwlOutsideDice',...e,kind:'dwlOutsideDice',dice:u},'02230'));if(p.investigator==='01005'&&!A.blank(s,e.pi)&&!e.wendy)for(const u of p.hand.filter(u=>!card(s,u).subtype_code))opts.push(opt('웬디 · '+A.name(s,u)+' 버리고 다시 공개',[{kind:'discard',u},{...e,kind:'dwlOutsideToken',held:e.held.filter(i=>i!==e.item.index),wendy:true}],code(s,u)));const done={...e.after,token:e.item.token};if(opts.length)choice(s,e.pi,A.tokenLabel(e.item.token)+' 공개',[...opts,opt('이 토큰으로 해결',{kind:'dwlOutsideDone',pi:e.pi,token:e.item.token,after:done})],'','reaction');else queue(s,{kind:'dwlOutsideDone',pi:e.pi,token:e.item.token,after:done});};
+H.dwlOutsideDice=(s,e)=>{s.players[e.pi].resources-=2;queue(s,{...e,kind:'dwlOutsideToken'});};
+H.dwlOutsideDone=(s,e)=>queue(s,...(e.token==='skull'?[{kind:'trumpetWindow',checked:[]}]:[]),e.after);
+H.dwlGazeToken=(s,e)=>queue(s,{kind:'dwlOutsideToken',pi:e.pi,after:{...e,kind:'dwlGazeResolve'}});
+H.dwlGazeResolve=(s,e)=>{const hit=['skull','cultist','tablet','elder_thing','auto_fail'].includes(e.token);A.notice(s,'최면을 거는 시선 · '+A.tokenLabel(e.token),'공격을 취소했습니다.'+(hit?' 적 자신의 피해값만큼 피해를 줍니다.':''),'02153',hit?[{kind:'enemyDamage',u:e.enemy,n:card(s,e.enemy).enemy_damage||0,pi:e.pi}]:[]);};
+H.dwlGamble=(s,e)=>queue(s,{kind:'dwlOutsideToken',pi:e.pi,after:{...e,kind:'dwlGambleResolve'}});
+H.dwlGambleResolve=(s,e)=>{const hit=e.token==='elder_sign'||/^[+-]?\d+$/.test(e.token)&&Number(e.token)%2===0;A.notice(s,'카드게임방 · '+A.tokenLabel(e.token),hit?'단서 2개'+(e.token==='elder_sign'?'와 자원 2개':'')+'를 획득합니다.':'아무 효과도 없습니다.','02073',hit?[{kind:'campaignGainPoolClues',pi:e.pi,n:2},...(e.token==='elder_sign'?[{kind:'gainResource',pi:e.pi,n:2}]:[])]:[]);};
+X.encounters.set('02093',(s,e)=>{A.discard(s,e.u);queue(s,{kind:'dwlOutsideToken',pi:e.pi,after:{kind:'dwlTwistResolve',pi:e.pi,source:e.u}});});
+H.dwlTwistResolve=(s,e)=>{const n=/^[+-]?\d+$/.test(e.token)?Number(e.token):null;if(e.token!=='elder_sign'&&!(n>0))A.damage(s,e.pi,n!==null?1:0,n===null?2:0,{source:e.source});};
+const main=A.mainActions;A.mainActions=(s,fx=false)=>main(s,fx);
+A.Content.register({cards:['02026','02190','02230','02271']});
+})(typeof window==='undefined'?globalThis:window);
