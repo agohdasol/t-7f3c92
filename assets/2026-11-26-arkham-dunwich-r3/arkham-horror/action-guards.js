@@ -1,0 +1,2 @@
+/* Apply scenario restrictions after every card module has supplied its actions. */
+(function(root){const A=root.Arkham,X=A.CampaignEngine,main=A.mainActions;A.mainActions=(s,fx=false)=>main(s,fx).filter(a=>{if(X.def(s)?.filterAction?.(s,a,X)===false)return false;if(a.type==='fight'&&s.enemies.includes(a.target)&&A.isAloof(s,a.target)&&s.cards[a.target].engaged==null&&!A.isMassive(s,a.target))return false;return true;});})(typeof window==='undefined'?globalThis:window);
