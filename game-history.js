@@ -12,6 +12,7 @@
   };
   catalog.marvelchampions=['마블 챔피언스','mc-mobile-save-v1','MC'];
   catalog.arkham=['아컴호러 카드게임','arkham-save-v1','Arkham'];
+  catalog.barcelona=['바르셀로나','barcelona-save-v1','Barcelona'];
   const gamesByKey=Object.fromEntries(Object.entries(catalog).map(([id,c])=>[c[1],id]));
   const difficulty={easy:'쉬움',normal:'보통',hard:'어려움'},species={mascamites:'마스카마이트',anomalies:'이상현상',oumuamua:'오우무아무아',centaurians:'센타우리안',exertians:'엑서티안',amoeba:'아메바',glyphids:'글리피드',arkhos:'아르코스'};
   const now=()=>new Date().toISOString(),uid=game=>game+'-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,12);
@@ -58,7 +59,8 @@
   function settings(game,s){const result=[],add=(label,value)=>{if(value!==null&&value!==undefined&&value!=='')result.push({label,value:String(value)});},yes=x=>x?'사용':'사용 안 함';
     const ais=(s.players||[]).filter(p=>p.isAI);if(ais.length){const ds=[...new Set(ais.map(p=>p.difficulty||s.difficulty||s.options?.difficulty||'normal'))];result.splice(0,result.length,...result.filter(x=>x.label!=='AI 난이도'));add('AI 난이도',ds.map(d=>difficulty[d]||d).join(' · '));}
     add('배치 시드',s.seed??s.options?.seed);
-    if(game==='gaia'){add('게임 구성',s.lostFleet?'본판 · 잃어버린 함대':'본판');add('첫 플레이어',s.players[s.first]?.name);for(const p of s.players)add(p.name+'의 종족',root.GaiaData?.label(p.faction)||p.faction);add('라운드 점수 타일',(s.core?.tiles?.scorings?.round||[]).join(' · '));add('최종 점수 타일',(s.core?.tiles?.scorings?.final||[]).join(' · '));
+    if(game==='barcelona'){add('게임 구성',s.options.expansion?'본판 · 그라시아 거리':'본판');add('프로모',[1,2,3,4].filter(i=>s.options['promo'+i]).map(i=>'프로모 '+i).concat(s.options.promoGracia?['그라시아 건물 보너스']:[]).join(' · ')||'없음');add('첫 플레이어',s.players[s.first].name);add('세르다 목표',(s.scoring||[]).map(k=>root.BarcelonaData?.goals.find(g=>g.id===k)?.name||k).join(' · '));add('도로 행동 배치',(s.actions||[]).map(k=>root.BarcelonaData?.actions[k]?.name||k).join(' / '));if(s.options.expansion){add('문화시설',s.amenities.map(k=>root.BarcelonaData?.goals.find(g=>g.id===k)?.name||k).join(' · '));add('육각형 자갈 배수',s.hexGoals.map(k=>root.Barcelona?.hexGoalText(k)||k).join(' · '));}}
+    else if(game==='gaia'){add('게임 구성',s.lostFleet?'본판 · 잃어버린 함대':'본판');add('첫 플레이어',s.players[s.first]?.name);for(const p of s.players)add(p.name+'의 종족',root.GaiaData?.label(p.faction)||p.faction);add('라운드 점수 타일',(s.core?.tiles?.scorings?.round||[]).join(' · '));add('최종 점수 타일',(s.core?.tiles?.scorings?.final||[]).join(' · '));
     }else if(game==='kanban'){add('게임 구성','칸반 EV'+(s.options.speedcharger?' · 급속충전':'')+(s.options.specialGarage?' · 특별 차고 보너스':''));add('시작 선택',s.players[s.initialFirst]?.name);add('최종 목표 타일',Number(s.finalGoal)+1);add('공장 가동일',s.day);add('주간 / 생산주기',s.week+' / '+s.cycles);
     }else if(game==='whitecastle'){add('게임 구성','본판'+(s.options.matcha?' · 말차':'')+(s.options.boeki?' · 교역':''));add('훈련장 준비','공식 입문 배치');add('첫 플레이어',s.players[s.initialFirst]?.name);add('시간 타일',(s.timeBoard?.tiles||[]).join(' · '));add('다이묘 카드',root.WhiteCastle?.card(s.daimyo)?.name||s.daimyo);if(s.options.matcha)add('다도 타일',Object.values(s.teaCeremonies||{}).concat(s.pondCeremony).join(' · '));
     }else if(game==='bloodhunt'){add('게임 구성','기본판 · '+s.players.length+'인');add('시작 트럼프',root.BloodHuntData?.suits.find(t=>t.id===s.initialTrump)?.nameKo||s.initialTrump);add('첫 우선권',s.players[s.initialFirst]?.name);add('진행한 라운드',s.round);add('종료 조건',s.result?.reason);
@@ -89,6 +91,7 @@
     let scoreLabel='최종 점수';const rows=r.rows||r.ranking||r.scores||r.breakdown||[];
     const players=people.map((p,id)=>{const row=rows.find((x,k)=>(x.id??x.player??k)===id)||{};let score=row.total??row.score??row.vp;
       const detail=[];
+      if(game==='barcelona'){for(const [k,label]of Object.entries({earned:'누적 승점',warehouse:'창고',passengers:'승객',walk:'보행자'}))detail.push({label,value:String(row[k]||0)});detail.push({label:'모더니즘 프로젝트',value:String((row.projects||[]).reduce((a,b)=>a+b,0))});}
       if(game==='whitecastle'){for(const[k,label]of Object.entries({earned:'누적 점수',wealth:'동전·인장',resources:'남은 자원',time:'영향력',courtiers:'가신',warriors:'무사',gardeners:'정원사',geishas:'게이샤',gift:'선물'}))detail.push({label,value:String(row[k]??0)});}
       if(game==='tkid'){const invasion=r.type==='invasion',f=r.ranking?.[0]??0;score=invasion?Math.min(...p.court):p.court[f];scoreLabel=invasion?'완성 추종자 세트':'승리 세력의 추종자';detail.push({label:'궁정 추종자',value:p.court.join(' / ')});}
       if(game==='cm'){score=r.counts?.[id]??0;scoreLabel='보유 성';}
@@ -115,6 +118,6 @@
   }
   // The installer must precede the app's engine capture. Some older bundles
   // put responsive controls after their app, so the final script is not enough.
-  function decorate(game,html){if(!catalog[game]||html.includes('GameHistory.install('))return html;const apps=[...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].filter(m=>m[1].slice(0,350).includes(catalog[game][2])&&(m[1].includes('document.getElementById')||m[1].includes('HexTable.create')));if(apps.length!==1)throw Error('게임 시작 코드를 찾을 수 없습니다.');const at=apps[0].index,code=('('+initializeHistory.toString()+')(window);window.GameHistory.install('+JSON.stringify(game)+');').replace(/<\/script/gi,'<\\/script');return html.slice(0,at)+'<script>'+code+'</script>'+html.slice(at);}
+  function decorate(game,html){if(!catalog[game])return html;const shared=('('+initializeHistory.toString()+')(window);').replace(/<\/script/gi,'<\\/script');html=html.replace(/<script>\s*\(function initializeHistory\(root\)\{[\s\S]*?<\/script>/g,()=>'<script>'+shared+'</script>');if(html.includes('GameHistory.install('))return html;const apps=[...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].filter(m=>m[1].slice(0,350).includes(catalog[game][2])&&(m[1].includes('document.getElementById')||m[1].includes('HexTable.create')));if(apps.length!==1)throw Error('게임 시작 코드를 찾을 수 없습니다.');const at=apps[0].index,code=('('+initializeHistory.toString()+')(window);window.GameHistory.install('+JSON.stringify(game)+');').replace(/<\/script/gi,'<\\/script');return html.slice(0,at)+'<script>'+code+'</script>'+html.slice(at);}
   const api={recordStorage,KEY,META,catalog,track,install,wrapStorage,capture,snapshot,settings,read,write,remove,replaceArchive,validRecord,decorate};root.GameHistory=api;if(typeof module==='object'&&module.exports)module.exports=api;
 })(typeof window==='undefined'?globalThis:window);
