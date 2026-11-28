@@ -13,6 +13,7 @@
   catalog.marvelchampions=['마블 챔피언스','mc-mobile-save-v1','MC'];
   catalog.arkham=['아컴호러 카드게임','arkham-save-v1','Arkham'];
   catalog.barcelona=['바르셀로나','barcelona-save-v1','Barcelona'];
+  catalog.distilled=['디스틸드','distilled-save-v1','DistilledEngine'];
   const gamesByKey=Object.fromEntries(Object.entries(catalog).map(([id,c])=>[c[1],id]));
   const difficulty={easy:'쉬움',normal:'보통',hard:'어려움'},species={mascamites:'마스카마이트',anomalies:'이상현상',oumuamua:'오우무아무아',centaurians:'센타우리안',exertians:'엑서티안',amoeba:'아메바',glyphids:'글리피드',arkhos:'아르코스'};
   const now=()=>new Date().toISOString(),uid=game=>game+'-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,12);
@@ -24,6 +25,7 @@
   function actor(game,s){return ['container','ostia','andromedasedge','seti','shackleton','bloodhunt','whitecastle'].includes(game)?s.active:s.current??0;}
   function turnToken(game,s,a,method){
     if(s.result||s.tutorial||game==='gaia')return null;
+    if(game==='distilled'&&['mash','distiller','result-next'].includes(typeof a==='string'?a.split(':')[0]:a?.type))return null;
     if(game==='kanban'&&s.order?.[s.index]===-1)return null;
     if(game==='whitecastle')return a?.type==='place-die'?'turn-'+s.turn:null;
     if(game==='bloodhunt')return s.phase==='draw'?'turn-'+s.turn:null;
@@ -59,7 +61,8 @@
   function settings(game,s){const result=[],add=(label,value)=>{if(value!==null&&value!==undefined&&value!=='')result.push({label,value:String(value)});},yes=x=>x?'사용':'사용 안 함';
     const ais=(s.players||[]).filter(p=>p.isAI);if(ais.length){const ds=[...new Set(ais.map(p=>p.difficulty||s.difficulty||s.options?.difficulty||'normal'))];result.splice(0,result.length,...result.filter(x=>x.label!=='AI 난이도'));add('AI 난이도',ds.map(d=>difficulty[d]||d).join(' · '));}
     add('배치 시드',s.seed??s.options?.seed);
-    if(game==='barcelona'){add('게임 구성',s.options.expansion?'본판 · 그라시아 거리':'본판');add('프로모',[1,2,3,4].filter(i=>s.options['promo'+i]).map(i=>'프로모 '+i).concat(s.options.promoGracia?['그라시아 건물 보너스']:[]).join(' · ')||'없음');add('첫 플레이어',s.players[s.first].name);add('세르다 목표',(s.scoring||[]).map(k=>root.BarcelonaData?.goals.find(g=>g.id===k)?.name||k).join(' · '));add('도로 행동 배치',(s.actions||[]).map(k=>root.BarcelonaData?.actions[k]?.name||k).join(' / '));if(s.options.expansion){add('문화시설',s.amenities.map(k=>root.BarcelonaData?.goals.find(g=>g.id===k)?.name||k).join(' · '));add('육각형 자갈 배수',s.hexGoals.map(k=>root.Barcelona?.hexGoalText(k)||k).join(' · '));}}
+    if(game==='distilled'){add('게임 구성','본판'+(s.options.expansion?' · 아프리카와 중동':'')+(s.options.promo?' · 프로모 미니 확장':'')+(s.options.caskStrength?' · 캐스크 스트렝스':''));add('제조법 모음집',s.options.flight);add('첫 플레이어',s.players[s.initialFirst??s.options.firstPlayer??0]?.name);for(const p of s.players)add(p.name+'의 증류업자',root.DistilledEngine?.getDistiller(s,p)?.name||p.distiller);add('증류주 대상',(s.awards||[]).map(a=>root.DistilledData?.awards?.find?.(d=>d.id===a.id)?.name||a.id).join(' · '));}
+    else if(game==='barcelona'){add('게임 구성',s.options.expansion?'본판 · 그라시아 거리':'본판');add('프로모',[1,2,3,4].filter(i=>s.options['promo'+i]).map(i=>'프로모 '+i).concat(s.options.promoGracia?['그라시아 건물 보너스']:[]).join(' · ')||'없음');add('첫 플레이어',s.players[s.first].name);add('세르다 목표',(s.scoring||[]).map(k=>root.BarcelonaData?.goals.find(g=>g.id===k)?.name||k).join(' · '));add('도로 행동 배치',(s.actions||[]).map(k=>root.BarcelonaData?.actions[k]?.name||k).join(' / '));if(s.options.expansion){add('문화시설',s.amenities.map(k=>root.BarcelonaData?.goals.find(g=>g.id===k)?.name||k).join(' · '));add('육각형 자갈 배수',s.hexGoals.map(k=>root.Barcelona?.hexGoalText(k)||k).join(' · '));}}
     else if(game==='gaia'){add('게임 구성',s.lostFleet?'본판 · 잃어버린 함대':'본판');add('첫 플레이어',s.players[s.first]?.name);for(const p of s.players)add(p.name+'의 종족',root.GaiaData?.label(p.faction)||p.faction);add('라운드 점수 타일',(s.core?.tiles?.scorings?.round||[]).join(' · '));add('최종 점수 타일',(s.core?.tiles?.scorings?.final||[]).join(' · '));
     }else if(game==='kanban'){add('게임 구성','칸반 EV'+(s.options.speedcharger?' · 급속충전':'')+(s.options.specialGarage?' · 특별 차고 보너스':''));add('시작 선택',s.players[s.initialFirst]?.name);add('최종 목표 타일',Number(s.finalGoal)+1);add('공장 가동일',s.day);add('주간 / 생산주기',s.week+' / '+s.cycles);
     }else if(game==='whitecastle'){add('게임 구성','본판'+(s.options.matcha?' · 말차':'')+(s.options.boeki?' · 교역':''));add('훈련장 준비','공식 입문 배치');add('첫 플레이어',s.players[s.initialFirst]?.name);add('시간 타일',(s.timeBoard?.tiles||[]).join(' · '));add('다이묘 카드',root.WhiteCastle?.card(s.daimyo)?.name||s.daimyo);if(s.options.matcha)add('다도 타일',Object.values(s.teaCeremonies||{}).concat(s.pondCeremony).join(' · '));
@@ -87,10 +90,11 @@
     else if(game==='greatlibrary')add('종료 조건',s.result?.cause||s.final?.cause);
     return result;
   }
-  function snapshot(game,s){if(!catalog[game]||!s?.result||s.tutorial)return null;const m=metadata(game,s),r=s.result,people=s.players||[{name:'나',isAI:false}],winners=r.winners||('winner'in r?[r.winner]:game==='etchinstone'?(r.win?[0]:[]):[]);
-    let scoreLabel='최종 점수';const rows=r.rows||r.ranking||r.scores||r.breakdown||[];
+  function snapshot(game,s){if(!catalog[game]||!s?.result||s.tutorial)return null;const m=metadata(game,s),r=s.result,people=s.players||[{name:'나',isAI:false}],winners=(game==='distilled'?s.winners:null)||r.winners||('winner'in r?[r.winner]:game==='etchinstone'?(r.win?[0]:[]):[]);
+    let scoreLabel='최종 점수';const rows=game==='distilled'&&Array.isArray(r)?r:r.rows||r.ranking||r.scores||r.breakdown||[];
     const players=people.map((p,id)=>{const row=rows.find((x,k)=>(x.id??x.player??k)===id)||{};let score=row.total??row.score??row.vp;
       const detail=[];
+      if(game==='distilled'){for(const [k,label]of Object.entries({sales:'진행 중 획득 점수',warehouse:'숙성고',bottles:'술병 수집',upgrades:'증류소 업그레이드',money:'남은 돈'}))detail.push({label,value:String(row.breakdown?.[k]??0)});detail.push({label:'증류소 목표',value:String((row.breakdown?.goals||[]).reduce((n,g)=>n+g.points,0))});}
       if(game==='barcelona'){for(const [k,label]of Object.entries({earned:'누적 승점',warehouse:'창고',passengers:'승객',walk:'보행자'}))detail.push({label,value:String(row[k]||0)});detail.push({label:'모더니즘 프로젝트',value:String((row.projects||[]).reduce((a,b)=>a+b,0))});}
       if(game==='whitecastle'){for(const[k,label]of Object.entries({earned:'누적 점수',wealth:'동전·인장',resources:'남은 자원',time:'영향력',courtiers:'가신',warriors:'무사',gardeners:'정원사',geishas:'게이샤',gift:'선물'}))detail.push({label,value:String(row[k]??0)});}
       if(game==='tkid'){const invasion=r.type==='invasion',f=r.ranking?.[0]??0;score=invasion?Math.min(...p.court):p.court[f];scoreLabel=invasion?'완성 추종자 세트':'승리 세력의 추종자';detail.push({label:'궁정 추종자',value:p.court.join(' / ')});}
